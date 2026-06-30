@@ -20,6 +20,18 @@
 // indicated by the expandDirection parameter and constrained within
 // the <div> specified by the containingDivId parameter.
 
+// Returns the effective CSS zoom scale applied to the given element by
+// walking up the DOM and multiplying any zoom values found.
+function getCumulativeZoom(el) {
+	let zoom = 1;
+	let node = el;
+	while (node && node !== document.body) {
+		const elZoom = parseFloat(window.getComputedStyle(node).zoom) || 1;
+		zoom *= elZoom;
+		node = node.parentElement;
+	}
+	return zoom;
+}
 
 // Adjust the position of the sub-area to make sure it doesn't extend
 // outside the containing divs boundary. We need to do this after the subarea
@@ -33,19 +45,23 @@ export function adjustSubAreaPosition(subAreaRef, containingDivId, expandDirecti
 		? containingDiv.getBoundingClientRect()
 		: { top: -1000, bottom: 1000, left: -1000, right: 1000 }; // To enable Jest tests.
 
+	const zoom = getCumulativeZoom(subAreaRef);
 	const subAreaRect = subAreaRef.getBoundingClientRect();
 
 	// Calculate the amount that the panel/menu is outside of the containing div
 	// edges. Positive value means it is outside. Negative is inside.
-	const outsideBottom = actionItemRect.bottom + subAreaRect.height - containingDivRect.bottom;
+	// Divide by zoom so that the pixel offset we apply (in un-zoomed CSS coords)
+	// correctly compensates for the visual overflow.
+	const outsideBottom = (actionItemRect.bottom + subAreaRect.height - containingDivRect.bottom) / zoom;
 
 	if (expandDirection === "vertical") {
-		const outsideRight = actionItemRect.left + subAreaRect.width - containingDivRect.right;
+		const outsideRight = (actionItemRect.left + subAreaRect.width - containingDivRect.right) / zoom;
 
 		if (outsideBottom > 0) {
-			const topGap = actionItemRect.top - containingDivRect.top;
-			const newTop = (topGap > subAreaRect.height)
-				? -(subAreaRect.height)
+			const topGap = (actionItemRect.top - containingDivRect.top) / zoom;
+			const subAreaHeight = subAreaRect.height / zoom;
+			const newTop = (topGap > subAreaHeight)
+				? -(subAreaHeight)
 				: -(outsideBottom);
 
 			subAreaRef.style.top = newTop + "px";
@@ -58,13 +74,13 @@ export function adjustSubAreaPosition(subAreaRef, containingDivId, expandDirecti
 			const floatingToolbar = subAreaRef.closest(".floating-toolbar");
 
 			const newLeft = floatingToolbar
-				? actionItemRect.left - floatingToolbar.getBoundingClientRect().left - outsideRight
-				: actionItemRect.left - containingDivRect.left - outsideRight;
+				? (actionItemRect.left - floatingToolbar.getBoundingClientRect().left) / zoom - outsideRight
+				: (actionItemRect.left - containingDivRect.left) / zoom - outsideRight;
 			subAreaRef.style.left = newLeft + "px";
 		}
 
 	} else {
-		const outsideRight = actionItemRect.right + subAreaRect.width - containingDivRect.right;
+		const outsideRight = (actionItemRect.right + subAreaRect.width - containingDivRect.right) / zoom;
 
 		if (outsideBottom > 0) {
 			const newTop = -(outsideBottom + 2);
@@ -72,7 +88,7 @@ export function adjustSubAreaPosition(subAreaRef, containingDivId, expandDirecti
 		}
 
 		if (outsideRight > 0) {
-			const newLeft = -(subAreaRect.width);
+			const newLeft = -(subAreaRect.width / zoom);
 			subAreaRef.style.left = newLeft + "px";
 		}
 	}
